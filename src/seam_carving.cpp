@@ -12,10 +12,10 @@ std::vector<std::vector<float>> calculateEnergy(const cv::Mat& image) {
 			int yUp    = std::max(y - 1, 0);
 			int yDown  = std::min(y + 1, height - 1);
 
-			cv::Vec3f left  = image.at<cv::Vec3f>(y, xLeft);
-			cv::Vec3f right = image.at<cv::Vec3f>(y, xRight);
-			cv::Vec3f up    = image.at<cv::Vec3f>(yUp, x);
-			cv::Vec3f down  = image.at<cv::Vec3f>(yDown, x);
+			cv::Vec3b left  = image.at<cv::Vec3b>(y, xLeft);
+			cv::Vec3b right = image.at<cv::Vec3b>(y, xRight);
+			cv::Vec3b up    = image.at<cv::Vec3b>(yUp, x);
+			cv::Vec3b down  = image.at<cv::Vec3b>(yDown, x);
 
 			float dx = cv::norm(right - left);
 			float dy = cv::norm(down - up);
@@ -93,7 +93,7 @@ std::vector<int> findHorizontalSeam(const cv::Mat& image, std::vector<std::vecto
 		int prev_y = seam[x + 1];
 		int start = std::max(prev_y - 1, 0);
 		int end = std::min(prev_y + 1, height - 1);
-		seam[x] = std::min_element(dp[x].begin() + start, dp[x].begin() + end + 1) - dp[x].begin();
+		seam[x] = std::min_element(dp[x].begin() + start, dp[x].begin() + end + 1) - dp[x].begin(); //! fix
 	}
 
 	return seam;
@@ -108,13 +108,13 @@ cv::Mat removePixels(const cv::Mat& image, const std::vector<int>& seam, bool ve
 
 	if (vertical) {
 		for (int y = 0; y < height; ++y) {
-			for (int x = 0; x < width - 1; ++x) {
+			for (int x = 0; x < width; ++x) {
 				newImage.at<cv::Vec3b>(y, x) = (x < seam[y]) ? image.at<cv::Vec3b>(y, x) : image.at<cv::Vec3b>(y, x + 1);
 			}
 		}
 	} else {
 		for (int x = 0; x < width; ++x) {
-			for (int y = 0; y < height - 1; ++y) {
+			for (int y = 0; y < height; ++y) {
 				newImage.at<cv::Vec3b>(y, x) = (y < seam[x]) ? image.at<cv::Vec3b>(y, x) : image.at<cv::Vec3b>(y+1, x);
 			}
 		}
@@ -123,17 +123,19 @@ cv::Mat removePixels(const cv::Mat& image, const std::vector<int>& seam, bool ve
 }
 
 cv::Mat seamCarving(const cv::Mat& image, const cv::Size& out_size) {
+	cv::Mat newImage = image.clone();
 	std::vector<std::vector<float>> energy = calculateEnergy(image);
 
-	while (image.size() != out_size) {
-		std::vector<int> vSeam = findVerticalSeam(image, energy);
-		removePixels(image, vSeam, true);
-		energy = calculateEnergy(image);
+	// while (newImage.size() != out_size) {
+	while (newImage.cols > out_size.width) {
+		std::vector<int> vSeam = findVerticalSeam(newImage, energy);
+		newImage = removePixels(newImage, vSeam, true);
+		energy = calculateEnergy(newImage);
 
 		// std::vector<int> hSeam = findVerticalSeam(out, energy);	
 	}
 
- 	return image;
+ 	return newImage;
 }
 
 //TODO: seam removing functions (horizontal and vertical)
