@@ -3,3 +3,6 @@ cmake-build-*
 *.swo
 .idea/
 Session.vim
+
+build/
+.vscode/

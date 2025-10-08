@@ -1,0 +1,13 @@
+{
+  "name": "seamcarving",
+  "image": "seamcarving",
+  "workspaceFolder": "/workdir",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workdir,type=bind",
+  "settings": {
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"
+  },
+  "extensions": [
+    "ms-vscode.cpptools",
+    "ms-vscode.cmake-tools"
+  ]
+}
