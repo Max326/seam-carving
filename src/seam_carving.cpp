@@ -1,10 +1,5 @@
 #include "seam_carving.h"
 
-cv::Mat seamCarving(const cv::Mat& image, const cv::Size& out_size) {
-  (void)out_size;
-  return image;
-}
-
 std::vector<std::vector<float>> calculateEnergy(const cv::Mat& image) {
     int height = image.rows;
     int width = image.cols;
@@ -32,9 +27,7 @@ std::vector<std::vector<float>> calculateEnergy(const cv::Mat& image) {
     return energy;
 }
 
-void findVerticalSeam(const cv::Mat& image){
-	std::vector<std::vector<float>> energy = calculateEnergy(image);
-
+std::vector<int> findVerticalSeam(const cv::Mat& image, std::vector<std::vector<float>>& energy) {
 	int height = image.rows;
 	int width = image.cols;
 
@@ -56,8 +49,95 @@ void findVerticalSeam(const cv::Mat& image){
 	}
 
 	// Backtrack to find the seam
+	std::vector<int> seam(height);
+	seam.back() = std::min_element(dp.back().begin(), dp.back().end()) - dp.back().begin();
+
+	for(int y = height - 2; y >= 0; --y){
+		int prev_x = seam[y + 1];
+		int start = std::max(prev_x - 1, 0);
+		int end = std::min(prev_x + 1, width - 1);
+		seam[y] = std::min_element(dp[y].begin() + start, dp[y].begin() + end + 1) - dp[y].begin();
+	}
+
+	return seam;
 }
 
-//TODO: seam finding functions (horizontal and vertical)
+std::vector<int> findHorizontalSeam(const cv::Mat& image, std::vector<std::vector<float>>& energy) {
+	int height = image.rows;
+	int width = image.cols;
+
+	std::vector<std::vector<float>> dp(height, std::vector<float>(width, 0.0f));
+
+	for (int i = 0; i < height; ++i) {
+		dp[i][0] = energy[i][0];
+	}
+
+	for (int x = 1; x < width; ++x) {
+		for (int y = 0; y < height; ++y) {
+			float min_energy = dp[y][x - 1];
+			if (y > 0) {
+				min_energy = std::min(min_energy, dp[y - 1][x - 1]);
+			}
+			if (y < height - 1) {
+				min_energy = std::min(min_energy, dp[y + 1][x - 1]);
+			}
+			dp[y][x] = energy[y][x] + min_energy;
+		}
+	}
+
+	// Backtrack to find the seam
+	std::vector<int> seam(width);
+	seam.back() = std::min_element(dp.back().begin(), dp.back().end()) - dp.back().begin();
+
+	for(int x = width - 2; x >= 0; --x){
+		int prev_y = seam[x + 1];
+		int start = std::max(prev_y - 1, 0);
+		int end = std::min(prev_y + 1, height - 1);
+		seam[x] = std::min_element(dp[x].begin() + start, dp[x].begin() + end + 1) - dp[x].begin();
+	}
+
+	return seam;
+}
+
+cv::Mat removePixels(const cv::Mat& image, const std::vector<int>& seam, bool vertical) {
+	int height = image.rows;
+	int width = image.cols;
+	
+	if (vertical) width--; else height--;
+	cv::Mat newImage(height, width, image.type());
+
+	if (vertical) {
+		for (int y = 0; y < height; ++y) {
+			for (int x = 0; x < width - 1; ++x) {
+				newImage.at<cv::Vec3b>(y, x) = (x < seam[y]) ? image.at<cv::Vec3b>(y, x) : image.at<cv::Vec3b>(y, x + 1);
+			}
+		}
+	} else {
+		for (int x = 0; x < width; ++x) {
+			for (int y = 0; y < height - 1; ++y) {
+				newImage.at<cv::Vec3b>(y, x) = (y < seam[x]) ? image.at<cv::Vec3b>(y, x) : image.at<cv::Vec3b>(y+1, x);
+			}
+		}
+	}
+	return newImage;
+}
+
+cv::Mat seamCarving(const cv::Mat& image, const cv::Size& out_size) {
+	std::vector<std::vector<float>> energy = calculateEnergy(image);
+
+	while (image.size() != out_size) {
+		std::vector<int> vSeam = findVerticalSeam(image, energy);
+		removePixels(image, vSeam, true);
+		energy = calculateEnergy(image);
+
+		// std::vector<int> hSeam = findVerticalSeam(out, energy);	
+	}
+
+ 	return image;
+}
+
 //TODO: seam removing functions (horizontal and vertical)
-//TODO: 
+//TODO: loop to remove seams until desired size is reached + update energy
+//TODO: seam direction choice (horizontal vs vertical)
+
+//TODO: sanitize inputs
