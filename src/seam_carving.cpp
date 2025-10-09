@@ -14,7 +14,7 @@ std::vector<std::vector<float>> calculateEnergy(const cv::Mat& image) {
     return energy;
 }
 
-float calculatePixelsEnergy(const cv::Mat& image, int x, int y) {
+float calculatePixelsEnergy(const cv::Mat& image, const int& x, const int& y) {
 	int height = image.rows;
 	int width = image.cols;
 
@@ -28,8 +28,8 @@ float calculatePixelsEnergy(const cv::Mat& image, int x, int y) {
 	cv::Vec3b up    = image.at<cv::Vec3b>(yUp, x);
 	cv::Vec3b down  = image.at<cv::Vec3b>(yDown, x);
 
-	float dx = cv::norm(right - left);
-	float dy = cv::norm(down - up);
+	float dx = cv::norm(cv::Vec3f(right) - cv::Vec3f(left));
+	float dy = cv::norm(cv::Vec3f(down) - cv::Vec3f(up));
 
 	return dx + dy;
 }
@@ -53,23 +53,40 @@ std::vector<std::vector<float>> updateEnergy(const cv::Mat& image, const std::ve
 		}
 
 		for (int y = 0; y < height; ++y) {
-			int seam_x = seam[y]; // The seam's coordinate in the OLD system
+			int seam_x = seam[y]; 
 
-			// Recalculate the pixel to the left of the seam
 			if (seam_x > 0) {
 				energy[y][seam_x - 1] = calculatePixelsEnergy(image, seam_x - 1, y);
 			}
 
-			// Recalculate the pixel that took the seam's place
-			if (seam_x < width) { // width is the *new* image width
+			if (seam_x < width) { 
 				energy[y][seam_x] = calculatePixelsEnergy(image, seam_x, y);
 			}
 		}
 	} else {
 		for (int x = 0; x < width; ++x) {
-			
+			std::vector<float> newCol;
+			newCol.reserve(height - 1);
+
+			for (int y = 0; y < height + 1; ++y) {
+				if (y != seam[x]) {
+					newCol.push_back(oldEnergy[y][x]);
+				}	
+			}
+			energy.push_back(newCol);
 		}
 
+		for (int x = 0; x < width; ++x) {
+			int seam_y = seam[x]; 
+
+			if (seam_y > 0) {
+				energy[seam_y - 1][x] = calculatePixelsEnergy(image, x, seam_y - 1);
+			}
+
+			if (seam_y < height) { 
+				energy[seam_y][x] = calculatePixelsEnergy(image, x, seam_y);
+			}
+		}
 		
 	}
 	return energy;
@@ -96,7 +113,7 @@ std::vector<int> findVerticalSeam(const cv::Mat& image, std::vector<std::vector<
 		}
 	}
 
-	// Backtrack to find the seam
+	// Backtracking
 	std::vector<int> seam(height);
 	seam.back() = std::min_element(dp.back().begin(), dp.back().end()) - dp.back().begin();
 
@@ -143,7 +160,7 @@ std::vector<int> findHorizontalSeam(const cv::Mat& image, std::vector<std::vecto
 		}
 	}
 
-	// Backtrack to find the seam
+	// Backtracking
 	std::vector<int> seam(width);
 	seam.back() = std::min_element(dp.begin(), dp.end(), 
 		[](const std::vector<float>& a, const std::vector<float>& b) {
@@ -158,8 +175,7 @@ std::vector<int> findHorizontalSeam(const cv::Mat& image, std::vector<std::vecto
 		if (prev_y > 0 && dp[prev_y - 1][x] < min_val) {
 			min_val = dp[prev_y - 1][x];
 			best_y = prev_y - 1;
-		}
-		if (prev_y < height - 1 && dp[prev_y + 1][x] < min_val) {
+		} else if (prev_y < height - 1 && dp[prev_y + 1][x] < min_val) {
 			min_val = dp[prev_y + 1][x];
 			best_y = prev_y + 1;
 		}
