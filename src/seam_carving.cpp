@@ -35,61 +35,40 @@ float calculatePixelsEnergy(const cv::Mat& image, const int& x, const int& y) {
 }
 
 std::vector<std::vector<float>> updateEnergy(const cv::Mat& image, const std::vector<int>& seam, bool vertical, const std::vector<std::vector<float>>& oldEnergy) {
-	int height = image.rows;
-	int width = image.cols;
-	std::vector<std::vector<float>> energy;
-	energy.reserve(height);
-
+	const int height = image.rows;
+	const int width = image.cols;
+	
 	if (vertical) {
+		std::vector<std::vector<float>> energy(height, std::vector<float>(width-1));
 		for (int y = 0; y < height; ++y) {
-			std::vector<float> newRow;
-			newRow.reserve(width - 1);
-			for (int x = 0; x < width + 1; ++x) {
-				if (x != seam[y]) {
-					newRow.push_back(oldEnergy[y][x]);
-				}
+			const int sx = seam[y];
+
+			for (int x = 0; x < width - 1; ++x) {
+				const int oldx = (x < sx) ? x : x + 1;
+				energy[y][x] = oldEnergy[y][oldx];
 			}
-			energy.push_back(newRow);
+			if (sx - 1 >= 0)
+                energy[y][sx - 1] = calculatePixelsEnergy(image, sx - 1, y);
+            if (sx < width - 1)
+                energy[y][sx] = calculatePixelsEnergy(image, sx, y);
 		}
-
-		for (int y = 0; y < height; ++y) {
-			int seam_x = seam[y]; 
-
-			if (seam_x > 0) {
-				energy[y][seam_x - 1] = calculatePixelsEnergy(image, seam_x - 1, y);
-			}
-
-			if (seam_x < width) { 
-				energy[y][seam_x] = calculatePixelsEnergy(image, seam_x, y);
-			}
-		}
+		return energy;
 	} else {
+		std::vector<std::vector<float>> energy(height-1, std::vector<float>(width));
 		for (int x = 0; x < width; ++x) {
-			std::vector<float> newCol;
-			newCol.reserve(height - 1);
+			const int sy = seam[x];
 
-			for (int y = 0; y < height + 1; ++y) {
-				if (y != seam[x]) {
-					newCol.push_back(oldEnergy[y][x]);
-				}	
+			for (int y = 0; y < height - 1; ++y) {
+				const int oldy = (y < sy) ? y : y + 1;
+				energy[y][x] = oldEnergy[oldy][x];
 			}
-			energy.push_back(newCol);
-		}
-
-		for (int x = 0; x < width; ++x) {
-			int seam_y = seam[x]; 
-
-			if (seam_y > 0) {
-				energy[seam_y - 1][x] = calculatePixelsEnergy(image, x, seam_y - 1);
-			}
-
-			if (seam_y < height) { 
-				energy[seam_y][x] = calculatePixelsEnergy(image, x, seam_y);
-			}
-		}
-		
-	}
-	return energy;
+			if (sy - 1 >= 0)
+                energy[sy - 1][x] = calculatePixelsEnergy(image, x, sy - 1);
+            if (sy < height - 1)
+                energy[sy][x] = calculatePixelsEnergy(image, x, sy);
+        }
+        return energy;
+	}	
 }
 
 std::vector<int> findVerticalSeam(const cv::Mat& image, std::vector<std::vector<float>>& energy) {
@@ -183,9 +162,22 @@ std::vector<int> findHorizontalSeam(const cv::Mat& image, std::vector<std::vecto
 		seam[x] = best_y;
 	}
 
-
-
 	return seam;
+}
+
+static float seamCost(const std::vector<int>& seam, const std::vector<std::vector<float>>& energy, bool vertical) {
+	float totalCost = 0.0f;
+	if (vertical){
+		for (size_t y = 0; y < seam.size(); ++y) {
+			totalCost += energy[y][seam[y]];
+		}
+	} else {
+		for (size_t x = 0; x < seam.size(); ++x) {
+			totalCost += energy[seam[x]][x];
+		}
+	}
+	
+	return totalCost;
 }
 
 cv::Mat removePixels(const cv::Mat& image, const std::vector<int>& seam, bool vertical) {
@@ -213,14 +205,58 @@ cv::Mat removePixels(const cv::Mat& image, const std::vector<int>& seam, bool ve
 
 cv::Mat seamCarving(const cv::Mat& image, const cv::Size& out_size) {
 	cv::Mat newImage = image.clone();
-	std::vector<std::vector<float>> energy = calculateEnergy(image);
+	std::vector<std::vector<float>> energy = calculateEnergy(newImage);
 
 	// while (newImage.size() != out_size) {
-	while (newImage.cols > out_size.width) {
-		std::vector<int> vSeam = findVerticalSeam(newImage, energy);
-		newImage = removePixels(newImage, vSeam, true);
+	while (newImage.cols > out_size.width || newImage.rows > out_size.height) {
+		bool removeVertical = (newImage.cols > out_size.width);
+		bool removeHorizontal = (newImage.rows > out_size.height);
+
+		std::vector<int> vSeam, hSeam;
+		
+		if (removeVertical && !removeHorizontal) {
+			vSeam = findVerticalSeam(newImage, energy);
+			newImage = removePixels(newImage, vSeam, true);
+			energy = updateEnergy(newImage, vSeam, true, energy);
+			continue;
+		}
+
+		if (!removeVertical && removeHorizontal) {
+			hSeam = findHorizontalSeam(newImage, energy);
+			newImage = removePixels(newImage, hSeam, false);
+			energy = updateEnergy(newImage, hSeam, false, energy);
+			continue;
+		}
+
+		vSeam = findVerticalSeam(newImage, energy);
+		hSeam = findHorizontalSeam(newImage, energy);
+
+		float vCost = seamCost(vSeam, energy, true);
+		float hCost = seamCost(hSeam, energy, false);
+
+		float vAvg = vCost / static_cast<float>(energy.size());
+        float hAvg = hCost / static_cast<float>(energy[0].size());
+
+        // require 5% advantage to switch directions
+        const float switch_thresh = 1.05f;
+
+        // If nearly tied, prefer the axis with more pixels left to remove
+        int vLeft = newImage.cols - out_size.width;
+        int hLeft = newImage.rows - out_size.height;
+
+        bool takeV = (vAvg * switch_thresh < hAvg) || (std::fabs(vAvg - hAvg) <= 1e-6f && vLeft >= hLeft);
+
+        if (takeV) {
+			newImage = removePixels(newImage, vSeam, true);
+			energy = updateEnergy(newImage, vSeam, true, energy);
+		}
+        else {
+			newImage = removePixels(newImage, hSeam, false);
+			energy = updateEnergy(newImage, hSeam, false, energy);
+		}       
+
 		// energy = calculateEnergy(newImage);
-		energy = updateEnergy(newImage, vSeam, true, energy);
+		// energy = updateEnergy(newImage, vSeam, true, energy);
 
 		// std::vector<int> hSeam = findVerticalSeam(out, energy);	
 	}

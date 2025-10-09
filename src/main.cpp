@@ -11,7 +11,7 @@ int main(int, char** argv) {
 		return -1;
 	}
 
-    auto out = seamCarving(in, cv::Size(2000, 968));
+    auto out = seamCarving(in, cv::Size(500, 330));
   
   	cv::imwrite("./output.png", out);
   	return 0;
